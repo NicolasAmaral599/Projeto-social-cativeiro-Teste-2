@@ -43,3 +43,15 @@ export interface DashboardStats {
   totalChildren: number;
   familiesServedThisMonth: number;
 }
+
+export interface Volunteer {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: string; // e.g. "Professor de Reforço", "Separador de Donativos"
+  project: string; // e.g. "Reforço Escolar", "Bazar Cativeiro"
+  status: 'Ativo' | 'Inativo';
+  joinDate: string;
+  hoursContributed: number;
+}

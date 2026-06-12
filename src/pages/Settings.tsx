@@ -39,6 +39,31 @@ export function Settings() {
   const [targetBaskets, setTargetBaskets] = useState(() => Number(localStorage.getItem('cativeiro_target_baskets')) || 150);
   const [targetFamilies, setTargetFamilies] = useState(() => Number(localStorage.getItem('cativeiro_target_families')) || 80);
 
+  // 4. Database configuration settings
+  const [dbMode, setDbMode] = useState<'local' | 'firestore' | 'supabase'>(() => {
+    const saved = localStorage.getItem('cativeiro_db_mode');
+    if (saved === 'supabase') return 'supabase';
+    if (saved === 'firestore') return 'firestore';
+    return 'local';
+  });
+
+  const [supabaseUrl, setSupabaseUrl] = useState(() => 
+    localStorage.getItem('cativeiro_supabase_url') || 
+    (import.meta as any).env?.VITE_SUPABASE_URL || 
+    (import.meta as any).env?.NEXT_PUBLIC_SUPABASE_URL || 
+    ''
+  );
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState(() => 
+    localStorage.getItem('cativeiro_supabase_anon_key') || 
+    (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 
+    (import.meta as any).env?.API_ANON_PUBLIC || 
+    ''
+  );
+
+  const [dataIsolation, setDataIsolation] = useState(() => {
+    return localStorage.getItem('cativeiro_data_isolation') !== 'false'; // default to true
+  });
+
   // Status banners
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -53,6 +78,18 @@ export function Settings() {
     localStorage.setItem('cativeiro_target_families', String(targetFamilies));
     
     triggerSuccess('Configurações institucionais e metas salvas com sucesso!');
+  };
+
+  const saveDbSettings = () => {
+    localStorage.setItem('cativeiro_db_mode', dbMode);
+    localStorage.setItem('cativeiro_supabase_url', supabaseUrl.trim());
+    localStorage.setItem('cativeiro_supabase_anon_key', supabaseAnonKey.trim());
+    localStorage.setItem('cativeiro_data_isolation', String(dataIsolation));
+    
+    triggerSuccess('Parâmetros de Banco de Dados salvos! Atualizando conexões do sistema...');
+    setTimeout(() => {
+      window.location.reload();
+    }, 1200);
   };
 
   const triggerSuccess = (msg: string) => {
@@ -294,33 +331,138 @@ export function Settings() {
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-white/10 text-emerald-400 flex items-center justify-center font-semibold">🔄</div>
                 <div>
-                  <CardTitle className="text-base font-bold text-white">Banco de Dados & Localização</CardTitle>
-                  <CardDescription className="text-xs text-slate-400">Status de replicação em tempo real para o Google Firestore.</CardDescription>
+                  <CardTitle className="text-base font-bold text-white">Banco de Dados & Sincronização</CardTitle>
+                  <CardDescription className="text-xs text-slate-400">Escolha o motor de armazenamento e gerencie a isolação de contas.</CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4 pt-6 text-xs text-slate-300">
-              <div className="flex justify-between items-center py-2.5 border-b border-white/5">
-                <span>Tipo de Conexão</span>
-                <Badge className="bg-emerald-500/10 text-emerald-400 font-bold border-none hover:bg-emerald-500/10">Firestore + LocalStorage</Badge>
+            <CardContent className="space-y-5 pt-6 text-xs text-slate-100">
+              
+              {/* Database Engine Selector */}
+              <div className="space-y-2">
+                <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Motor Ativo do Banco de Dados</Label>
+                <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-800 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setDbMode('local')}
+                    className={`py-2 px-1 text-center font-bold text-[10.5px] rounded-lg transition-all ${
+                      dbMode === 'local' 
+                        ? 'bg-blue-600 text-white shadow-md' 
+                        : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                    }`}
+                  >
+                    Local Offline
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDbMode('firestore')}
+                    className={`py-2 px-1 text-center font-bold text-[10.5px] rounded-lg transition-all ${
+                      dbMode === 'firestore' 
+                        ? 'bg-blue-600 text-white shadow-md' 
+                        : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                    }`}
+                  >
+                    Firestore Cloud
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDbMode('supabase')}
+                    className={`py-2 px-1 text-center font-bold text-[10.5px] rounded-lg transition-all ${
+                      dbMode === 'supabase' 
+                        ? 'bg-blue-600 text-white shadow-md' 
+                        : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                    }`}
+                  >
+                    Supabase DB
+                  </button>
+                </div>
               </div>
 
-              <div className="flex justify-between items-center py-2.5 border-b border-white/5">
-                <span>Coleção de Famílias</span>
-                <span className="font-mono text-slate-400">/families</span>
+              {/* Data Isolation Switch */}
+              <div className="p-3 bg-slate-800/60 rounded-xl border border-white/5 space-y-2">
+                <div className="flex justify-between items-center bg-slate-800/80 p-2 rounded-lg">
+                  <span className="font-bold text-slate-300">Isolar Famílias por Conta</span>
+                  <button
+                    type="button"
+                    onClick={() => setDataIsolation(!dataIsolation)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      dataIsolation ? 'bg-emerald-500' : 'bg-slate-600'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        dataIsolation ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  {dataIsolation 
+                    ? "✓ ATIVADO: Cada conta de voluntário/administrador visualiza APENAS as famílias que ela mesma cadastrou." 
+                    : "✗ DESATIVADO: Todas as contas de voluntários e administradores compartilham e visualizam a mesma lista de famílias unificada."}
+                </p>
               </div>
 
-              <div className="flex justify-between items-center py-2.5 border-b border-white/5">
-                <span>ID do Projeto Provisionado</span>
-                <span className="font-mono text-slate-400">corded-impulse-g8gvj</span>
+              {/* Supabase Configurations (conditional validation banner or edit section) */}
+              {dbMode === 'supabase' && (
+                <div className="p-4 bg-slate-800/90 rounded-xl border border-blue-500/20 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block">Credenciais do Supabase Web SDK</span>
+                  
+                  <div className="space-y-1">
+                    <Label htmlFor="subUrl" className="text-[10px] text-slate-400 font-medium">SUPABASE URL</Label>
+                    <Input 
+                      id="subUrl"
+                      placeholder="https://your-project.supabase.co"
+                      value={supabaseUrl}
+                      onChange={e => setSupabaseUrl(e.target.value)}
+                      className="bg-slate-900 border-slate-700/80 text-white rounded-lg h-8 px-2.5 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="subAnon" className="text-[10px] text-slate-400 font-medium">SUPABASE ANON KEY</Label>
+                    <Input 
+                      id="subAnon"
+                      type="password"
+                      placeholder="eyJhbGciOiJIUzI1NiIsIn..."
+                      value={supabaseAnonKey}
+                      onChange={e => setSupabaseAnonKey(e.target.value)}
+                      className="bg-slate-900 border-slate-700/80 text-white rounded-lg h-8 px-2.5 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="bg-slate-900/60 p-2.5 rounded-lg border border-white/5 text-[10px] text-slate-400 leading-relaxed">
+                    <p className="font-bold text-white mb-1">Passo a passo no Postgres:</p>
+                    <code className="block bg-slate-900 p-1.5 rounded text-[9.5px] font-mono select-all text-emerald-400 whitespace-pre overflow-x-auto leading-normal">
+{`create table families (
+  id text primary key,
+  responsible_name text,
+  created_at text,
+  created_by text,
+  data jsonb
+);`}
+                    </code>
+                  </div>
+                </div>
+              )}
+
+              {/* Action save metrics for Database */}
+              <div className="pt-2 border-t border-white/5">
+                <Button 
+                  onClick={saveDbSettings} 
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold h-10 rounded-xl gap-2 shadow-md shadow-blue-950"
+                >
+                  <Save size={15} /> Gravar Parâmetros do Banco de Dados
+                </Button>
               </div>
 
-              <div className="space-y-2 pt-2">
+              {/* Risk Zone Reset */}
+              <div className="space-y-2 pt-3 border-t border-white/5">
                 <span className="text-[10px] font-bold text-yellow-500 uppercase tracking-wider block">Zona de Risco</span>
-                <p className="text-slate-450 leading-relaxed text-[11px]">Se desejar limpar as modificações de teste e re-alimentar o sistema com as famílias fictícias e configurações limpas de fábrica:</p>
+                <p className="text-slate-400 leading-relaxed text-[11px]">Se desejar limpar as modificações de teste e re-alimentar o sistema com as famílias fictícias e configurações limpas de fábrica:</p>
                 <Button 
                   onClick={handleResetData}
-                  className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold text-xs h-9 px-4 rounded-xl border border-rose-500/20 w-full justify-center"
+                  className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold text-xs h-9 px-4 rounded-xl border border-rose-500/20 w-full justify-center cursor-pointer"
                 >
                   Reiniciar Banco de Dados Local
                 </Button>

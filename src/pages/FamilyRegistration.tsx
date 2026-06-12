@@ -10,6 +10,7 @@ import { Plus, Trash2, Save, ArrowLeft, Users, Home, ClipboardList, Edit, X, Hea
 import { useNavigate, useParams } from 'react-router';
 import { Family, FamilyMember } from '../types';
 import { useMockData } from '@/src/hooks/useMockData';
+import { addNotification } from '@/src/lib/notifications';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Utility formatting masks for professional entry standard
@@ -261,15 +262,31 @@ export function FamilyRegistration() {
       members: family.members || []
     } as Family;
 
-    setTimeout(() => {
-      if (id) {
-        updateFamily(submission);
-      } else {
-        addFamily(submission);
+    (async () => {
+      try {
+        if (id) {
+          await updateFamily(submission);
+          addNotification(
+            'Cadastro Atualizado',
+            `A ficha socioeconômica de ${submission.responsibleName || 'Responsável' } foi atualizada com sucesso.`,
+            'registration'
+          );
+        } else {
+          await addFamily(submission);
+          addNotification(
+            'Novo Cadastro Realizado',
+            `Família de ${submission.responsibleName || 'Responsável' } foi cadastrada com sucesso.`,
+            'registration'
+          );
+        }
+        setLoading(false);
+        navigate('/families');
+      } catch (err: any) {
+        console.error("Error saving family:", err);
+        setFamilyErrors({ submit: err.message || "Erro ao salvar no banco de dados. Por favor teste sua conexão." });
+        setLoading(false);
       }
-      setLoading(false);
-      navigate('/families');
-    }, 1000);
+    })();
   };
 
   return (
@@ -885,6 +902,12 @@ export function FamilyRegistration() {
         </TabsContent>
       </Tabs>
       
+      {familyErrors.submit && (
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-sm font-medium">
+          {familyErrors.submit}
+        </div>
+      )}
+
       <div className="flex justify-end gap-2 px-1">
         <Button variant="outline" onClick={() => navigate(-1)} className="rounded-xl h-11">Cancelar</Button>
         <Button onClick={handleSave} disabled={loading} className="px-10 h-11 font-bold shadow-lg shadow-primary/20 rounded-xl">

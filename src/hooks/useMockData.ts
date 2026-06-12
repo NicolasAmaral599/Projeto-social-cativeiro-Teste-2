@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Family, DashboardStats } from '../types';
+import { dbService, getDatabaseMode } from '../lib/db-service';
 
 const MOCK_FAMILIES: Family[] = [
   {
@@ -93,18 +94,53 @@ const MOCK_FAMILIES: Family[] = [
 
 export function useMockData() {
   const [families, setFamilies] = useState<Family[]>(() => {
+    // Sync-load with localStorage as starting fallback
     const saved = localStorage.getItem('cativeiro_families');
     return saved ? JSON.parse(saved) : MOCK_FAMILIES;
   });
+  
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Load from current active database mode on mount
   useEffect(() => {
-    localStorage.setItem('cativeiro_families', JSON.stringify(families));
-  }, [families]);
+    let active = true;
+    const load = async () => {
+      try {
+        setLoading(true);
+        const data = await dbService.fetchFamilies();
+        if (active) {
+          // If in offline local mode and have zero items, initialize with Mock Data
+          if (getDatabaseMode() === 'local' && data.length === 0 && !localStorage.getItem('cativeiro_families_initialized')) {
+            localStorage.setItem('cativeiro_families', JSON.stringify(MOCK_FAMILIES));
+            localStorage.setItem('cativeiro_families_initialized', 'true');
+            setFamilies(MOCK_FAMILIES);
+          } else {
+            setFamilies(data);
+          }
+          setError(null);
+        }
+      } catch (err: any) {
+        if (active) {
+          console.error("useMockData sync failure:", err);
+          setError(err.message || "Failed to sync families with database.");
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const stats: DashboardStats = {
     totalFamilies: families.length,
     totalChildren: families.reduce((acc, f) => {
-      return acc + f.members.filter(m => {
+      return acc + (f.members || []).filter(m => {
         const birthDate = new Date(m.birthDate);
         const age = new Date().getFullYear() - birthDate.getFullYear();
         return age < 18;
@@ -117,21 +153,65 @@ export function useMockData() {
     }).length
   };
 
-  const addFamily = (family: Family) => {
+  const addFamily = async (family: Family) => {
+    // Optimistic state update
     setFamilies(prev => [family, ...prev]);
+    try {
+      await dbService.addFamily(family);
+      // Ensure sync back to local storage for local mode
+      if (getDatabaseMode() === 'local') {
+        const saved = localStorage.getItem('cativeiro_families');
+        const list = saved ? JSON.parse(saved) : [];
+        if (!list.some((f: any) => f.id === family.id)) {
+          list.unshift(family);
+          localStorage.setItem('cativeiro_families', JSON.stringify(list));
+        }
+      }
+    } catch (err: any) {
+      console.error("Failed to add family in database:", err);
+      // Revert optimistic update
+      setFamilies(prev => prev.filter(f => f.id !== family.id));
+      throw err;
+    }
   };
 
-  const updateFamily = (updatedFamily: Family) => {
+  const updateFamily = async (updatedFamily: Family) => {
+    const original = families;
+    // Optimistic state update
     setFamilies(prev => prev.map(f => f.id === updatedFamily.id ? updatedFamily : f));
+    try {
+      await dbService.updateFamily(updatedFamily);
+      if (getDatabaseMode() === 'local') {
+        localStorage.setItem('cativeiro_families', JSON.stringify(families.map(f => f.id === updatedFamily.id ? updatedFamily : f)));
+      }
+    } catch (err: any) {
+      console.error("Failed to update family in database:", err);
+      setFamilies(original);
+      throw err;
+    }
   };
 
-  const deleteFamily = (id: string) => {
+  const deleteFamily = async (id: string) => {
+    const original = families;
+    // Optimistic state update
     setFamilies(prev => prev.filter(f => f.id !== id));
+    try {
+      await dbService.deleteFamily(id);
+      if (getDatabaseMode() === 'local') {
+        localStorage.setItem('cativeiro_families', JSON.stringify(families.filter(f => f.id !== id)));
+      }
+    } catch (err: any) {
+      console.error("Failed to delete family in database:", err);
+      setFamilies(original);
+      throw err;
+    }
   };
 
   return {
     families,
     stats,
+    loading,
+    error,
     addFamily,
     updateFamily,
     deleteFamily
